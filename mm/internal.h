@@ -630,6 +630,25 @@ long mapping_evict_folio(struct address_space *mapping, struct folio *folio);
 unsigned long mapping_try_invalidate(struct address_space *mapping,
 		pgoff_t start, pgoff_t end, unsigned long *nr_failed);
 
+/*
+ * @folio has been taken out of a mapping's i_pages.  Lockless lookups may
+ * still hold a pointer to it that they loaded under rcu_read_lock(), so
+ * mark it: set PG_rcu_free, which keeps its memory out of the page
+ * allocator until an RCU grace period has passed.  Call before dropping
+ * the page cache's references to @folio.
+ *
+ * The mark delays only the free.  A caller that keeps the folio and puts
+ * it to another use gets no delay.
+ *
+ * XXX: hugetlb folios go back to the hugetlb pool, not to the page
+ * allocator, and are not covered.
+ */
+static inline void folio_mark_removed_from_cache(struct folio *folio)
+{
+	if (!folio_test_hugetlb(folio))
+		folio_set_rcu_free(folio);
+}
+
 /**
  * folio_evictable - Test whether a folio is evictable.
  * @folio: The folio to test.

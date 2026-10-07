@@ -141,6 +141,7 @@ static void page_cache_delete(struct address_space *mapping,
 
 	xas_store(&xas, shadow);
 	xas_init_marks(&xas);
+	folio_mark_removed_from_cache(folio);
 
 	folio->mapping = NULL;
 	/* Leave folio->index set: truncation lookup relies upon it */
@@ -312,6 +313,7 @@ static void page_cache_delete_batch(struct address_space *mapping,
 
 		i++;
 		xas_store(&xas, NULL);
+		folio_mark_removed_from_cache(folio);
 		total_pages += folio_nr_pages(folio);
 	}
 	mapping->nrpages -= total_pages;
@@ -827,6 +829,7 @@ void replace_page_cache_folio(struct folio *old, struct folio *new)
 
 	xas_lock_irq(&xas);
 	xas_store(&xas, new);
+	folio_mark_removed_from_cache(old);
 
 	old->mapping = NULL;
 	/* hugetlb pages do not participate in page cache accounting. */
@@ -1876,12 +1879,16 @@ EXPORT_SYMBOL(page_cache_prev_miss);
  * B. Remove the page from i_pages
  * C. Return the page to the page allocator
  *
- * This means that any page may have its reference count temporarily
- * increased by a speculative page cache (or GUP-fast) lookup as it can
- * be allocated by another user before the RCU grace period expires.
- * Because the refcount temporarily acquired here may end up being the
- * last refcount on the page, any page allocation must be freeable by
- * folio_put().
+ * B marks the folio PG_rcu_free, so C happens only after an RCU grace
+ * period.  Steps 1 to 3 run under rcu_read_lock(), so a page cache lookup
+ * never increments the refcount of a page that has been reallocated
+ * (hugetlb folios excepted, for now).  It can still find the refcount
+ * frozen by A, so step 2 stays conditional.
+ *
+ * A GUP-fast lookup can still increment the reference count of a page
+ * that has been allocated by another user.  Because the refcount
+ * temporarily acquired there may end up being the last refcount on the
+ * page, any page allocation must be freeable by folio_put().
  */
 
 /*
