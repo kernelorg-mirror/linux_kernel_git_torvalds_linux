@@ -141,7 +141,7 @@ static void page_cache_delete(struct address_space *mapping,
 
 	xas_store(&xas, shadow);
 	xas_init_marks(&xas);
-	folio_mark_removed_from_cache(folio);
+	folio_mark_removed_from_cache(mapping, folio);
 
 	folio->mapping = NULL;
 	/* Leave folio->index set: truncation lookup relies upon it */
@@ -313,7 +313,7 @@ static void page_cache_delete_batch(struct address_space *mapping,
 
 		i++;
 		xas_store(&xas, NULL);
-		folio_mark_removed_from_cache(folio);
+		folio_mark_removed_from_cache(mapping, folio);
 		total_pages += folio_nr_pages(folio);
 	}
 	mapping->nrpages -= total_pages;
@@ -829,7 +829,7 @@ void replace_page_cache_folio(struct folio *old, struct folio *new)
 
 	xas_lock_irq(&xas);
 	xas_store(&xas, new);
-	folio_mark_removed_from_cache(old);
+	folio_mark_removed_from_cache(mapping, old);
 
 	old->mapping = NULL;
 	/* hugetlb pages do not participate in page cache accounting. */
@@ -1881,8 +1881,10 @@ EXPORT_SYMBOL(page_cache_prev_miss);
  *
  * B marks the folio PG_rcu_free, so C happens only after an RCU grace
  * period.  Steps 1 to 3 run under rcu_read_lock(), so a page cache lookup
- * never increments the refcount of a page that has been reallocated
- * (hugetlb folios excepted, for now).  It can still find the refcount
+ * never increments the refcount of a page that has been reallocated.
+ * Excepted are hugetlb folios, for now, and folios of an inode being
+ * evicted, which are not marked: a lookup that relies on the mark must
+ * hold a reference to the inode.  A lookup can still find the refcount
  * frozen by A, so step 2 stays conditional.
  *
  * A GUP-fast lookup can still increment the reference count of a page

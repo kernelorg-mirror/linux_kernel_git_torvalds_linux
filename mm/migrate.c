@@ -657,7 +657,7 @@ static int __folio_migrate_mapping(struct address_space *mapping,
 		__swap_cache_replace_folio(ci, folio, newfolio);
 	} else {
 		xas_store(&xas, newfolio);
-		folio_mark_removed_from_cache(folio);
+		folio_mark_removed_from_cache(mapping, folio);
 	}
 
 	/*
