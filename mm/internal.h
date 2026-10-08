@@ -655,8 +655,10 @@ static inline void folio_mark_removed_from_cache(struct address_space *mapping,
 {
 	if (folio_test_hugetlb(folio))
 		return;
-	if (mapping->host && (inode_state_read_once(mapping->host) & I_FREEING))
+	if (mapping->host && (inode_state_read_once(mapping->host) & I_FREEING)) {
+		count_vm_events(PGFREE_RCU_SKIP, folio_nr_pages(folio));
 		return;
+	}
 	folio_set_rcu_free(folio);
 }
 
